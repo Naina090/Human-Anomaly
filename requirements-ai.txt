@@ -1,0 +1,3 @@
+# Optional pose-model runtime. Install after requirements.txt and verify
+# PyTorch's CPU/CUDA wheel for your hardware using the official PyTorch selector.
+ultralytics>=8.4,<9

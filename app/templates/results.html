@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Analysis result | Sentinel{% endblock %}
+{% block content %}
+<div class="wrap page" id="analysis-result" data-video-id="{{ video.id }}" data-status-url="{{ url_for('videos.status', video_id=video.id) }}">
+  <div class="page-heading"><div><div class="eyebrow">ANALYSIS RESULT / 03</div><h1>{{ video.original_name }}</h1><p>Run ID {{ video.id[:12] }} · Uploaded {{ video.uploaded_at }}</p></div><a class="button secondary" href="/history">← History</a></div>
+  <div id="processing-notice" class="notice" {% if video.status not in ['queued','processing'] %}hidden{% endif %} role="status" aria-live="polite"><b>Analysis in progress</b><p id="processing-message">The worker is processing this video. This page will update when the result is ready.</p><progress id="analysis-progress" max="100" value="0"></progress></div>
+  <div class="result-grid">
+    <section class="panel">
+      <div class="panel-head"><div><h2>Source video</h2><p>Private local upload preview · click event times to seek</p></div><span id="status-badge" class="badge {{ video.status }}">{{ video.status }}</span></div>
+      <video id="source-video" class="result-video" controls preload="metadata" src="{{ url_for('videos.media',video_id=video.id) }}"></video>
+      {% if video.has_processed_video %}<h3>Annotated pose output</h3><video class="result-video" controls preload="metadata" src="{{ url_for('videos.processed_media',video_id=video.id) }}"></video>{% endif %}
+      <div class="facts"><div><span>DURATION</span><b>{{ '%.1f'|format(video.duration or 0) }} sec</b></div><div><span>RESOLUTION</span><b>{{ video.width or '—' }} × {{ video.height or '—' }}</b></div><div><span>FRAME RATE</span><b>{{ '%.2f'|format(video.fps or 0) }} fps</b></div><div><span>PROCESS TIME</span><b>{{ '%.2f'|format(video.processing_seconds or 0) }} sec</b></div></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><div><h2>Analysis summary</h2><p>Method and result capability are reported explicitly</p></div></div>
+      {% if video.status == 'complete' %}
+        {% if video.analysis_mode == 'pose_heuristic' %}<div class="result-callout"><span class="amber-icon">!</span><div><b>Pose-based fall-transition prototype completed</b><p>This is an unvalidated research heuristic, not a diagnosis or a measure of a person's danger.</p></div></div>
+        {% else %}<div class="result-callout"><span class="green-dot"></span><div><b>Video validation complete</b><p>No pose model is configured, so this run extracted metadata only and made no activity predictions.</p></div></div>{% endif %}
+      {% elif video.status == 'failed' %}<div class="error-box">{{ video.error or 'Video processing failed.' }}</div>{% else %}<p>Job queued. Processing status will update automatically.</p>{% endif %}
+      <div class="method-card"><b>Method</b><span>{{ video.detection_method or ('Pending' if video.status in ['queued','processing'] else 'OpenCV validation only') }}</span><p>Potential fall requires prior upright pose evidence, a rapid vertical body-center drop, and a sustained horizontal torso. Low posture alone is insufficient. Event score is a documented heuristic score; confidence is not provided.</p></div>
+      {% if events %}<h3>Potential fall events</h3><div class="table-wrap"><table><thead><tr><th>Event</th><th>Video time</th><th>Heuristic score</th><th>Method</th></tr></thead><tbody>{% for event in events %}<tr><td>{{ event.category }}</td><td><button class="seek-time" type="button" data-seconds="{{ event.timestamp }}">{{ '%.2f'|format(event.timestamp) }}s ▶</button></td><td>{{ event.score if event.score is not none else '—' }}</td><td>{{ event.method }}</td></tr>{% endfor %}</tbody></table></div>
+      {% elif video.status == 'complete' %}<div class="empty compact"><h3>No event rows were produced</h3><p>{% if video.analysis_mode == 'pose_heuristic' %}The heuristic did not observe its required transition pattern. This does not prove the video contains no fall.{% else %}This validation-only run did not include a detector and generated no anomaly predictions.{% endif %}</p></div>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block styles %}<style>.notice[hidden]{display:none}.notice progress{display:block;width:100%;height:8px;margin-top:12px;accent-color:#51c8e8}.seek-time{border:0;background:transparent;color:#51c8e8;cursor:pointer;font:inherit}</style>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/results.js') }}"></script>{% endblock %}

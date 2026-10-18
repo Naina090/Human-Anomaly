@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard | Sentinel{% endblock %}
+{% block content %}
+<div class="wrap page">
+  <div class="page-heading"><div><div class="eyebrow">OVERVIEW / 01</div><h1>Research dashboard</h1><p>Live summary of stored videos, processing jobs, and actual detector events.</p></div><a class="button primary" href="{{ url_for('videos.upload_page') }}">＋ Analyze a video</a></div>
+
+  <section class="system-status" aria-label="System readiness">
+    <div class="system-status-item"><span class="status-indicator {{ 'online' if mongo_connected else 'offline' }}"></span><div><b>MongoDB</b><small>{{ 'Connected' if mongo_connected else 'Unavailable · check .env and MongoDB access' }}</small></div></div>
+    <div class="system-status-item"><span class="status-indicator {{ 'online' if detector.ready else 'limited' }}"></span><div><b>Pose analysis</b><small>{{ detector.message }}</small></div></div>
+  </section>
+
+  <div class="metric-grid">
+    <div class="metric"><span>VIDEOS UPLOADED</span><strong>{{ videos }}</strong><small>All recorded analysis attempts</small></div>
+    <div class="metric"><span>POTENTIAL EVENTS</span><strong>{{ events }}</strong><small>Actual stored detector events</small></div>
+    <div class="metric"><span>COMPLETED</span><strong>{{ done }}</strong><small>Processing completed</small></div>
+    <div class="metric"><span>ACTIVE JOBS</span><strong>{{ active }}</strong><small>Queued or running</small></div>
+    <div class="metric"><span>FAILED RUNS</span><strong>{{ failed }}</strong><small>Processing errors recorded</small></div>
+  </div>
+
+  <div class="dashboard-grid">
+    <section class="panel">
+      <div class="panel-head"><div><h2>Recent uploads</h2><p>Latest video records read from MongoDB</p></div><a href="{{ url_for('history.history') }}">Full history →</a></div>
+      {% if recent_videos %}<div class="table-wrap"><table><thead><tr><th>Video</th><th>Uploaded</th><th>Status</th><th>Duration</th><th></th></tr></thead><tbody>
+      {% for video in recent_videos %}<tr><td>{{ video.original_filename }}</td><td>{{ video.uploaded_display }}</td><td><span class="badge {{ video.processing_status }}">{{ video.processing_status }}</span></td><td>{{ ('%.1f'|format(video.duration)) ~ 's' if video.duration else '—' }}</td><td><a href="{{ url_for('videos.results', video_id=video.id) }}">View</a></td></tr>{% endfor %}
+      </tbody></table></div>{% else %}<div class="empty"><span class="empty-icon">◧</span><h3>No videos yet</h3><p>Upload a short video to start a real analysis record.</p><a href="{{ url_for('videos.upload_page') }}">Analyze a video →</a></div>{% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><h2>Event distribution</h2><p>Counts from stored detection-event documents</p></div></div>
+      {% if categories %}<div class="distribution" role="list">{% for category in categories %}<div class="dist-row" role="listitem"><div class="dist-label"><span>{{ category.category }}</span><b>{{ category.count }}</b></div><div class="dist-track" aria-label="{{ category.count }} {{ category.category }} events"><span style="width: {{ category.percent }}%"></span></div></div>{% endfor %}</div>
+      {% else %}<div class="empty compact"><div class="chart-placeholder">—</div><h3>No events recorded</h3><p>This is expected in validation-only mode. Zero events do not mean videos are anomaly-free.</p></div>{% endif %}
+    </section>
+  </div>
+
+  <section class="panel recent-events">
+    <div class="panel-head"><div><h2>Recent detection events</h2><p>Only events actually emitted by configured detection logic appear here</p></div><a href="{{ url_for('reports.reports') }}">Reports →</a></div>
+    {% if recent %}<div class="table-wrap"><table><thead><tr><th>Event</th><th>Video</th><th>Timestamp</th><th>Method</th></tr></thead><tbody>{% for event in recent %}<tr><td>{{ event.category }}</td><td>{{ event.original_filename }}</td><td><a href="{{ url_for('videos.results', video_id=event.video_id|string) }}">{{ '%.2f'|format(event.timestamp) }}s · play</a></td><td>{{ event.method }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty compact"><h3>No detection events yet</h3><p>Metadata validation does not produce anomaly predictions. The optional pose heuristic must be configured before potential-fall events can be emitted.</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}
