@@ -7,6 +7,7 @@
   <section class="system-status" aria-label="System readiness">
     <div class="system-status-item"><span class="status-indicator {{ 'online' if mongo_connected else 'offline' }}"></span><div><b>MongoDB</b><small>{{ 'Connected' if mongo_connected else 'Unavailable · check .env and MongoDB access' }}</small></div></div>
     <div class="system-status-item"><span class="status-indicator {{ 'online' if detector.ready else 'limited' }}"></span><div><b>Pose analysis</b><small>{{ detector.message }}</small></div></div>
+    <div class="system-status-item"><span class="status-indicator {{ 'online' if object_detector.ready else 'limited' }}"></span><div><b>Object detection / tracking</b><small>{{ object_detector.message }}</small></div></div>
   </section>
 
   <div class="metric-grid">
@@ -14,7 +15,13 @@
     <div class="metric"><span>POTENTIAL EVENTS</span><strong>{{ events }}</strong><small>Actual stored detector events</small></div>
     <div class="metric"><span>COMPLETED</span><strong>{{ done }}</strong><small>Processing completed</small></div>
     <div class="metric"><span>ACTIVE JOBS</span><strong>{{ active }}</strong><small>Queued or running</small></div>
+    <div class="metric"><span>QUEUED</span><strong>{{ queued }}</strong><small>Waiting for a worker</small></div>
+    <div class="metric"><span>PROCESSING</span><strong>{{ processing }}</strong><small>Currently in the worker</small></div>
     <div class="metric"><span>FAILED RUNS</span><strong>{{ failed }}</strong><small>Processing errors recorded</small></div>
+    <div class="metric"><span>FACE ANALYZED</span><strong>{{ face_videos }}</strong><small>Videos with completed face analysis</small></div>
+    <div class="metric"><span>FACE OBSERVATIONS</span><strong>{{ face_observations }}</strong><small>Sampled-frame detections, not unique people</small></div>
+    <div class="metric"><span>OBJECT OBSERVATIONS</span><strong>{{ object_observations }}</strong><small>Sampled detections, not unique objects</small></div>
+    <div class="metric"><span>PERSON TRACKS</span><strong>{{ person_track_estimate }}{% if person_track_estimate_capped %}+{% endif %}</strong><small>Approximate per-video temporary IDs</small></div>
   </div>
 
   <div class="dashboard-grid">
@@ -31,6 +38,12 @@
       {% else %}<div class="empty compact"><div class="chart-placeholder">—</div><h3>No events recorded</h3><p>This is expected in validation-only mode. Zero events do not mean videos are anomaly-free.</p></div>{% endif %}
     </section>
   </div>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>Detected object classes</h2><p>Counts are actual stored model observations across sampled frames.</p></div></div>
+    {% if object_categories %}<div class="distribution" role="list">{% for category in object_categories %}<div class="dist-row" role="listitem"><div class="dist-label"><span>{{ category.label|title }}</span><b>{{ category.count }}</b></div></div>{% endfor %}</div>
+    {% else %}<div class="empty compact"><h3>No object detections stored</h3><p>Configure a local object model before uploads to produce object observations.</p></div>{% endif %}
+  </section>
 
   <section class="panel recent-events">
     <div class="panel-head"><div><h2>Recent detection events</h2><p>Only events actually emitted by configured detection logic appear here</p></div><a href="{{ url_for('reports.reports') }}">Reports →</a></div>

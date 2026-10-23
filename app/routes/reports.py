@@ -42,10 +42,17 @@ def csv_export():
         abort(400)
     videos, events = report_data(start, end)
     out = io.StringIO(); writer = csv.writer(out)
-    writer.writerow(["video_id", "filename", "uploaded_at", "status", "event_category", "timestamp_seconds", "score", "method"])
+    writer.writerow(["video_id", "filename", "uploaded_at", "status", "event_category", "label",
+                     "timestamp_seconds", "start_timestamp_seconds", "end_timestamp_seconds",
+                     "frame_number", "confidence", "anomaly_score", "track_id", "method", "details"])
     names = {str(v["_id"]): (v.get("original_filename", ""), v.get("upload_date", ""), v.get("processing_status", "")) for v in videos}
     for e in events:
         event_video_id = str(e["video_id"])
         filename, uploaded, status = names.get(event_video_id, (e.get("original_filename", ""), "", ""))
-        writer.writerow([event_video_id, filename, uploaded, status, e.get("event_type", ""), e.get("timestamp_seconds", ""), e.get("anomaly_score", e.get("confidence", "")), e.get("detection_method", "")])
+        writer.writerow([event_video_id, filename, uploaded, status, e.get("event_type", ""),
+                         e.get("label", ""), e.get("timestamp_seconds", ""),
+                         e.get("start_timestamp_seconds", ""), e.get("end_timestamp_seconds", ""),
+                         e.get("frame_number", ""),
+                         e.get("confidence", ""), e.get("anomaly_score", ""), e.get("track_id", ""),
+                         e.get("detection_method", ""), repr(e.get("details", e.get("metadata", "")))])
     return Response(out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=anomaly-report.csv"})

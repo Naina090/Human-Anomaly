@@ -4,7 +4,7 @@
 
 ## Abstract
 
-This project presents a browser-based Flask application for local video analysis. It stores metadata/jobs/events in MongoDB, keeps videos on local storage, and runs work in a bounded background thread pool. Without optional pose weights, the system validates video metadata only. When YOLO pose weights are configured, a documented temporal heuristic may flag potential fall transitions; this research prototype has no validated accuracy claim.
+This project presents a browser-based Flask application for local video analysis. It stores metadata/jobs/events in MongoDB, keeps videos on local storage, and runs work in a bounded background thread pool. OpenCV face detection is available independently. Optional Ultralytics object detection and tracking require a locally configured model. Optional YOLO pose weights support a documented temporal heuristic for potential fall transitions. These research prototypes have no validated accuracy claim.
 
 ## Introduction
 
@@ -25,6 +25,9 @@ Create a beginner-accessible web workflow for handling video-analysis experiment
 - Optionally estimate COCO pose keypoints and apply an explainable fall-transition heuristic.
 - Run long video analysis jobs in a bounded background queue and report progress.
 - Persist video records and event rows in MongoDB.
+- Detect frontal faces independently with OpenCV's bundled Haar cascade and save sampled-frame counts.
+- Optionally detect supported COCO objects and temporarily track detected people, persisting actual sampled observations separately from anomaly events.
+- Provide a deterministic summary and CSV report based only on persisted analysis results.
 - Provide searchable history and data-backed CSV reports.
 - Clearly document capabilities, limitations, privacy, and future model validation needs.
 
@@ -50,9 +53,16 @@ flowchart TD
  R --> J[(MongoDB videos and processing_jobs)]
  R --> W[Bounded background thread pool]
  W --> S[OpenCV streaming processor]
+ S --> OD[Optional YOLO object detector and ByteTrack]
+ OD --> OE[(MongoDB detection_events: object observations)]
  S --> P[Optional YOLO COCO pose]
+ P --> PF[(MongoDB pose_detection_frames: sampled keypoints)]
  P --> H[Temporal fall heuristic]
  H --> E[(MongoDB detection_events)]
+ OE --> Q
+ S --> FD[OpenCV frontal-face Haar cascade]
+ FD --> FF[(MongoDB face_detection_frames)]
+ FD --> FS[Video face_analysis summary]
  W --> F[Local original and annotated files]
  J --> Q[Dashboard, history, results, reports]
  Q --> U
@@ -71,22 +81,33 @@ flowchart LR
  M -->|Yes| H[Pose transition heuristic]
  H --> E[(MongoDB detection_events: emitted events only)]
  P --> O[Original playback and optional annotated output]
+ P --> F{OpenCV face cascade available?}
+ F -->|Yes| FC[Sampled face boxes and counts]
+ FC --> FF[(MongoDB face_detection_frames)]
+ F -->|No| FU[Face status unavailable; continue other processing]
  DB --> R[Results, dashboard, history and reports]
  E --> R
 ```
 
 ## Database design
 
-The `videos` collection stores filename, generated file reference, upload date, status, duration, FPS, dimensions, processing time and error. `processing_jobs` holds status, progress and timestamps. `detection_events` references a video ObjectId and stores category, video timestamp, nullable confidence, optional heuristic score, method and evidence metadata. Events are inserted only when the configured detector emits one.
+The `videos` collection stores filename, generated local-file reference, upload date, file size, status, duration, FPS, dimensions, processing time, error, and a separate `face_analysis` status/summary. `processing_jobs` holds status, progress and timestamps, including interrupted state after a local restart. `detection_events` references a video ObjectId and stores anomaly category, video timestamp, nullable confidence, optional heuristic score, method and evidence metadata. Events are inserted only when the configured anomaly detector emits one. `face_detection_frames` separately stores sampled video timestamps, face counts, and bounding boxes; it does not identify people or contain confidence scores.
+`detection_events` also holds actual sampled object observations with event type `object_detection`, supported class label, model confidence, frame/timestamp, bounding box, and optional temporary tracker ID. These observations are not anomaly claims and dashboard anomaly totals exclude this event type. Person track counts are approximate tracker outputs, not unique identities. The deterministic summary and CSV report are generated from stored records; no language model or invented content is used.
+`pose_detection_frames` stores one bounded evidence document per sampled frame with detected person count and available COCO shoulders, hips, knees and ankles, including coordinates and keypoint confidence when supplied by the model. The UI retrieves a bounded, time-ordered set for review. Existing records without this collection remain compatible; the index is created on startup without dropping data.
 
 ## Module descriptions
 
 - `app/routes`: page, upload, history, result and report endpoints.
 - `app/services/video_processor.py`: bounded-frame OpenCV processing, metadata and optional annotated output.
 - `app/services/fall_detector.py`: optional pose inference and upright/drop/persistence heuristic.
+- `app/services/repository.py`: bounded MongoDB read/write helpers for face and pose sampled-frame evidence.
+- `app/services/face_detector.py`: OpenCV's bundled frontal-face Haar cascade; no external model download is performed.
+- `app/services/object_detector.py`: optional local Ultralytics detector with ByteTrack persistence; model files are not downloaded automatically.
+- `app/services/report_service.py`: evidence-grounded structured summary and per-video CSV report.
 - `app/services/repository.py`: MongoDB data access and dashboard/report queries.
 - `app/routes/videos.py`: upload and enqueue, worker lifecycle, result/media/status routes.
 - `app/db.py`: MongoDB schema and connection helper.
+- `app/routes/history.py`: video-library filtering, deletion, and conditional retry for failed/interrupted jobs.
 - `app/templates` and `app/static`: Jinja pages, responsive styling and small interactions.
 
 ## Implementation
@@ -95,16 +116,16 @@ Explain the chosen local configuration, generated filenames, upload checks, data
 
 ## Testing and results
 
-Workspace verification on 2026-10-18: `python -m compileall -q app tests` completed and `python -m pytest -q` reported **15 passed**. Tests use mongomock and synthetic videos/keypoints; this does not verify a live Atlas connection, downloaded model weights, model accuracy, or annotated codec support on every system. Re-run both commands in the final submission environment and record any differences.
+Workspace verification on 2026-10-23: `.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider` completed with **41 passed**. Python AST parsing succeeded for 19 files, `node --check` succeeded for both JavaScript files, and `git diff --check` found no whitespace errors (Git reported line-ending normalization warnings only). Tests use isolated mongomock and synthetic/fake model outputs; they verify routes, validation, video decoding, persistence logic, pose keypoint evidence serialization, fall-transition intervals, object detection normalization, tracker aggregation, reports, retries, and error handling, but do not verify real Ultralytics inference. A separate actual-config upload check returned 200 for `GET /upload`; a valid diagnostic upload returned a handled 503 and its local file was cleaned up because Mongo client initialization failed with a sanitized `ConfigurationError` indicating DNS hostname resolution failure. The connection failed before the ping and no Atlas collection read/write could be performed. No pose/object weights or Ultralytics package are available in this workspace. No positive face-video sample is included, so positive face-detection quality is unverified.
 
 ## Limitations
 
-The fall-transition heuristic has not been validated against a research dataset and is susceptible to missed events and false positives. It emits at most one event per video. The current simple pose association chooses the nearest detected pose center and can switch people in crowded scenes; it is not identity tracking. Fighting, general anomaly detection, logins/accounts, distributed worker recovery, and public-deployment hardening are not implemented. Annotated output depends on OpenCV codec support. Empty event counts do not imply normal activity.
+The fall-transition heuristic has not been validated against a research dataset and is susceptible to missed events and false positives. It emits at most one event per video, and its pose association chooses the nearest detected pose center; it can switch people in crowded scenes and is not identity tracking. Object detector availability depends on separately installed Ultralytics/PyTorch and an explicitly configured compatible local weight file; object classes depend on those weights. ByteTrack IDs can change after missed detections/occlusions and do not identify people. Fighting and general anomaly detection are not implemented. Annotated output depends on OpenCV codec support. Empty event counts do not imply normal activity.
 
 ## Conclusion and future scope
 
-Summarize the working Mongo-backed video-management site and optional experimental fall-transition prototype. Future work should evaluate on consented labeled data, define event-level metrics, improve multi-person tracking, add account permissions, and use a durable external worker system before public deployment.
+Summarize the working Mongo-backed video-management site, optional object observations/tracking, and experimental fall-transition prototype according to the features actually configured and tested. Future work should evaluate on consented labeled data, define event-level metrics, improve multi-person tracking, add account permissions, and use a durable external worker system before public deployment.
 
 ## References
 
-Add only sources you verified directly. The optional model guide and licensing details are linked in README. Record the exact weight file/version you download and the license terms you reviewed. No dataset is bundled and no accuracy, dataset result or experiment is claimed.
+Add only sources you verified directly. Optional model guides and licensing details are linked in README. Record the exact weight file/version you obtain and license terms reviewed. No dataset is bundled and no accuracy, dataset result or experiment is claimed.
